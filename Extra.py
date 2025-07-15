@@ -4,7 +4,7 @@ from typing import List, Optional, Callable, Any, Tuple, Union
 from copy import deepcopy
 
 class ExtraLayer(nn.Module):
-    def __init__(self, n_classes, classifier):
+    def __init__(self, num_classes, classifier):
         super().__init__()
         if classifier is None:
             self.layers = nn.Sequential(
@@ -14,15 +14,15 @@ class ExtraLayer(nn.Module):
                 nn.ReLU(),
                 nn.Linear(1024, 2048),
                 nn.ReLU(),
-                nn.Linear(2048, n_classes))
+                nn.Linear(2048, num_classes))
         else:
             self.layers = deepcopy(classifier)
         
-        self.ce = nn.CrossEntropyLoss()
+        self.cross_entropy_loss = nn.CrossEntropyLoss()
 
-    def forward(self, x):
-        return self.layers(x)
+    def forward(self, features):
+        return self.layers(features)
 
-    def get_loss(self, x, label):
-        loss = self.ce(x, label)
+    def get_loss(self, features, labels):
+        loss = self.cross_entropy_loss(features, labels)
         return loss
