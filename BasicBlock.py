@@ -1,6 +1,5 @@
 from collections import OrderedDict
 from Loss import LossLayer
-from loss_fn import LocalLoss
 from Projector import ProjectorLayer
 from Encoder import EncoderLayer
 from Extra import ExtraLayer
