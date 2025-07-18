@@ -1,12 +1,10 @@
 import torch
 from torch.utils.data import DataLoader, Dataset
 import random
-import nltk
 from nltk.corpus import wordnet
-import torchvision.transforms as transforms
 
 # 確保下載 WordNet 數據（如果尚未下載）
-nltk.download('wordnet')
+# nltk.download('wordnet') # This line is removed as per the edit hint.
 
 class _AugmentedDataset(Dataset):
     def __init__(self, original_dataset, data_type, **kwargs):

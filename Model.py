@@ -1,13 +1,8 @@
-from collections import OrderedDict
-
 import torch
 import torch.nn as nn
 
 from BasicBlock import BasicBlock
 from utils import Optimizer, LR_Scheduler, CPUThread
-from itertools import chain
-
-import numpy as np
 
 
 class SCPL_model(nn.Module):

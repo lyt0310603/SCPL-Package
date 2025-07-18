@@ -1,6 +1,5 @@
 import torch
 import torch.nn as nn
-from typing import List, Optional, Callable, Any, Tuple, Union
 
 
 class EncoderLayer(nn.Module):

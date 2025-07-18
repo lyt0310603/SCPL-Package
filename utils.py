@@ -1,9 +1,6 @@
 import torch
 import torch.nn as nn
-import math
 import threading
-from torch.utils.data import Dataset
-from torch import optim
 
 
 class Optimizer:
