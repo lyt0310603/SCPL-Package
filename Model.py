@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 
-from BasicBlock import BasicBlock
+from BasicBlock import BasicBlock, AdaptiveBasicBlock
 from utils import Optimizer, LR_Scheduler, CPUThread
 
 
@@ -33,7 +33,7 @@ class SCPL_model(nn.Module):
             self.test = self.test_step
     
     # get the information of the user model
-    def _get_layer_config(self, custom_model, layer_balance, gpu_list, device_distribution, transform_funcs, loss_fn, projector_type, num_classes, is_adaptive, classifier):
+    def _get_layer_config(self, custom_model, layer_balance, gpu_list, device_distribution, transform_funcs, loss_fn, projector_type, num_classes, classifier):
         layer_config = {}
         balance_idx = 0
         layer_idx = 0
@@ -48,9 +48,9 @@ class SCPL_model(nn.Module):
                                            "trans_func": transform_funcs[layer_idx] if transform_funcs != None else None,
                                            "projector_type": projector_type,
                                            "loss_fn":loss_fn if (layer_idx < len(layer_balance)-1 or self.is_adaptive) else nn.CrossEntropyLoss(),
-                                           "num_classes": num_classes,
-                                           "is_adaptive":is_adaptive,
-                                           "classifier":classifier}
+                                           "num_classes": num_classes}
+                if self.is_adaptive:
+                    layer_config[layer_idx]["classifier"] = classifier
                 device.append(gpu_list[device_distribution[layer_idx]] if gpu_list != None and device_distribution != None else 'cpu')
                 layer_idx += 1
                 balance_idx += 1
@@ -62,7 +62,10 @@ class SCPL_model(nn.Module):
     def _build_model(self):            
         self.model = []
         for idx, (k, v) in enumerate(self.model_config.items()):
-            self.model.append(BasicBlock(**v).to(v['device']))
+            if self.is_adaptive:
+                self.model.append(AdaptiveBasicBlock(**v).to(v['device']))
+            else:
+                self.model.append(BasicBlock(**v).to(v['device']))
         
         self.model = torch.nn.Sequential(*self.model)
 
