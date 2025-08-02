@@ -22,14 +22,14 @@ class BasicBlock(nn.Module):
     def _default_transform_func(*args):
         return args[0]
 
-    def forward_step(self, result: Union[torch.Tensor, List[torch.Tensor]]) -> Tuple[List[torch.Tensor], torch.Tensor]:
+    def forward_step(self, result: Union[torch.Tensor, List[torch.Tensor]], mask: Optional[torch.Tensor] = None) -> Tuple[List[torch.Tensor], torch.Tensor]:
         x = self.transform_func(*result)
-        result_list, loss_cal = self.encoder_layer(x)
+        result_list, loss_cal = self.encoder_layer(x, mask)
             
         return result_list, loss_cal    
         
-    def forward(self, result: Union[torch.Tensor, List[torch.Tensor]]) -> Tuple[List[torch.Tensor], torch.Tensor]:
-        return self.forward_step(result)
+    def forward(self, result: Union[torch.Tensor, List[torch.Tensor]], mask: Optional[torch.Tensor] = None) -> Tuple[List[torch.Tensor], torch.Tensor]:
+        return self.forward_step(result, mask)
 
     def loss(self, x, true_y):
         encoder_loss, _ = self.loss_layer.get_loss(x, true_y)
@@ -43,19 +43,19 @@ class AdaptiveBasicBlock(BasicBlock):
         super().__init__(layer_list, device, transform_func, projector_type, loss_fn, num_classes)
         self.extra_layer = ExtraLayer(num_classes, classifier)
         
-    def adaptive_test_step(self, result: Union[torch.Tensor, List[torch.Tensor]]):
+    def adaptive_test_step(self, result: Union[torch.Tensor, List[torch.Tensor]], mask: Optional[torch.Tensor] = None):
         x = self.transform_func(*result)
-        result_list, loss_cal = self.encoder_layer(x)
+        result_list, loss_cal = self.encoder_layer(x, mask)
         projected_output = self.projector_layer(loss_cal)
         classifier_output = self.extra_layer(projected_output)
 
         return result_list, loss_cal, classifier_output
     
-    def forward(self, result: Union[torch.Tensor, List[torch.Tensor]]) -> Tuple[List[torch.Tensor], torch.Tensor, torch.Tensor]:
+    def forward(self, result: Union[torch.Tensor, List[torch.Tensor]], mask: Optional[torch.Tensor] = None) -> Tuple[List[torch.Tensor], torch.Tensor, torch.Tensor]:
         if self.training:
-            return super().forward_step(result)
+            return super().forward_step(result, mask)
         else:
-            return self.adaptive_test_step(result)
+            return self.adaptive_test_step(result, mask)
     
     def loss(self, x, true_y):
         encoder_loss, projected_output = self.loss_layer.get_loss(x, true_y)

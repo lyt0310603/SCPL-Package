@@ -95,9 +95,10 @@ class SCPL_model(nn.Module):
                 if param.requires_grad:
                     print(name, param.data)
 
-    def train_step(self, X, Y):
+    def train_step(self, X, Y, mask=None):
         features_list = []
         labels_list = []
+        masks_list = []
         total_loss = 0
         layer_losses = []
         layer_features = []
@@ -105,7 +106,10 @@ class SCPL_model(nn.Module):
         layers_num = len(self.model_config)
         for i in range(0, layers_num):
             labels_list.append(Y.to(self.device_list[i]))
-            
+            if mask is not None:
+                masks_list.append(mask.to(self.device_list[i]))
+            else:
+                masks_list.append(None)
         features_list.append([X.to(self.device_list[0], non_blocking=True)])        
         
         for i in range(layers_num):
@@ -115,7 +119,7 @@ class SCPL_model(nn.Module):
             optimizer.zero_grad()
             
         for i in range(0, layers_num):
-            output, hidden_state = self.model[i](features_list[-1])
+            output, hidden_state = self.model[i](features_list[-1], masks_list[i])
             layer_features.append(hidden_state)
             
             args = (self.model[i], self.optimizers[i].optimizer, hidden_state, labels_list[i])
@@ -139,40 +143,55 @@ class SCPL_model(nn.Module):
             
         return layer_features[-1], total_loss
 
-    def test_step(self, X, Y):
-        features_list = list()
+    def test_step(self, X, Y, mask=None):
+        features_list = []
+        masks_list = []
         
         y = Y.to(self.device_list[-1], non_blocking=True)
         features_list.append([X.to(self.device_list[0], non_blocking=True)])
-        
         layers_num = len(self.model_config)
 
-        for i in range(0, layers_num):
+        # 初始化 masks_list，確保長度與層數一致
+        for i in range(layers_num):
+            if mask is not None:
+                masks_list.append(mask.to(self.device_list[i]))
+            else:
+                masks_list.append(None)
+
+        for i in range(layers_num):
             self.model[i].eval()
             
-        for i in range(0, layers_num):
-            output, _ = self.model[i](features_list[-1])
+        for i in range(layers_num):
+            output, _ = self.model[i](features_list[-1], masks_list[i])
             output = [t.to(self.device_list[i+1 if i+1 < layers_num else i], non_blocking=True) for t in output]
             features_list.append(output)
             
         return output[0], y
 
-    def adaptive_test_step(self, X, Y):
+    def adaptive_test_step(self, X, Y, mask=None):
         self.patiencecount = 0
         classifier_output_pre = None
         classifier_outputs = []
-        features_list = list()
+        features_list = []
+        masks_list = []
         
         y = Y.to(self.device_list[-1], non_blocking=True)
         features_list.append([X.to(self.device_list[0], non_blocking=True)])
         
         layers_num = len(self.model_config)
 
-        for i in range(0, layers_num):
+        # 初始化 masks_list，確保長度與層數一致
+        for i in range(layers_num):
+            if mask is not None:
+                masks_list.append(mask.to(self.device_list[i]))
+            else:
+                masks_list.append(None)
+
+        for i in range(layers_num):
             self.model[i].eval()
 
-        for i in range(0, layers_num):
-            output, _, classifier_output = self.model[i](features_list[-1])
+        for i in range(layers_num):
+            output, _, classifier_output = self.model[i](features_list[-1], masks_list[i])
             output = [t.to(self.device_list[i+1 if i+1 < layers_num else i], non_blocking=True) for t in output]
             features_list.append(output)
             classifier_outputs.append(classifier_output)
@@ -227,8 +246,8 @@ class SCPL_model(nn.Module):
     def get_config(self):
         return self.model_config
 
-    def forward(self, X, Y):
+    def forward(self, X, Y, mask=None):
         if self.training:
-            return self.train_step(X, Y)
+            return self.train_step(X, Y, mask)
         else:
-            return self.test(X, Y)
+            return self.test(X, Y, mask)

@@ -10,6 +10,7 @@ class EncoderLayer(nn.Module):
         # 初始化時分析每層的處理方式
         self.layers = nn.ModuleList()
         self.process_functions = []
+        self.mask = None
         
         for layer in layers:
             self.layers.append(layer)
@@ -20,6 +21,8 @@ class EncoderLayer(nn.Module):
                 self.process_functions.append(self._process_rnn)
             elif isinstance(layer, nn.Embedding):
                 self.process_functions.append(self._process_embedding)
+            elif isinstance(layer, nn.TransformerEncoderLayer):
+                self.process_functions.append(self._process_transformer)
             else:
                 if layer.__class__.__module__.startswith('torch.nn'):
                     self.process_functions.append(self._process_standard)
@@ -38,6 +41,10 @@ class EncoderLayer(nn.Module):
         features = layer(features)
         return [features], features.mean(dim=1)
     
+    def _process_transformer(self, features: torch.Tensor, layer: nn.Transformer) -> Tuple[List[torch.Tensor], torch.Tensor]:
+        features = layer(src=features, src_key_padding_mask=self.mask)
+        return [features], features.mean(dim=1)
+    
     def _process_standard(self, features: torch.Tensor, layer: nn.Module) -> Tuple[List[torch.Tensor], torch.Tensor]:
         features = layer(features)
         return [features], features
@@ -53,7 +60,8 @@ class EncoderLayer(nn.Module):
         except ValueError:
             raise ValueError("Custom layer forward method must return two values: (output, loss_value)")
 
-    def forward(self, features):
+    def forward(self, features, mask=None):
+        self.mask = mask
         for layer, process_function in zip(self.layers, self.process_functions):
             result_list, loss_value = process_function(features, layer)
             features = result_list[0]  # 使用第一個輸出作為下一層的輸入
