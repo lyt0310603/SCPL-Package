@@ -6,8 +6,8 @@ from utils import Optimizer, LR_Scheduler, CPUThread
 
 
 class SCPL_model(nn.Module):
-    def __init__(self, custom_model, layer_balance, projector_type="i", loss_fn="CL", num_classes=None,
-                 transform_funcs=None, gpu_list=None, device_distribution=None, 
+    def __init__(self, custom_model, device_map, projector_type="i", loss_fn="CL", num_classes=None,
+                 transform_funcs=None, 
                  optimizer_fn=torch.optim.Adam, optimizer_param={},
                  scheduler_fn: torch.optim.lr_scheduler=None, scheduler_param={},
                  multi_t=True, 
@@ -16,9 +16,8 @@ class SCPL_model(nn.Module):
         self.multi_t = multi_t
         self.is_adaptive = is_adaptive
         
-        self._model_check(custom_model, layer_balance, gpu_list, device_distribution, transform_funcs, loss_fn, num_classes, is_adaptive, classifier)
-        self.model_config, self.device_list = self._get_layer_config(custom_model, layer_balance, 
-                                                                      gpu_list, device_distribution, transform_funcs, 
+        self._model_check(custom_model, device_map, transform_funcs, loss_fn, num_classes, is_adaptive, classifier)
+        self.model_config, self.device_list = self._get_layer_config(custom_model, device_map, transform_funcs, 
                                                                       loss_fn, projector_type, num_classes, is_adaptive, classifier)
         self._build_model()
         self._init_optimizers(optimizer_fn, optimizer_param)
@@ -33,30 +32,48 @@ class SCPL_model(nn.Module):
             self.test = self.test_step
     
     # get the information of the user model
-    def _get_layer_config(self, custom_model, layer_balance, gpu_list, device_distribution, transform_funcs, loss_fn, projector_type, num_classes, classifier):
+    def _get_layer_config(self, custom_model, device_map, transform_funcs, loss_fn, projector_type, num_classes, classifier):
         layer_config = {}
         balance_idx = 0
         layer_idx = 0
         layers = []
         device = []
 
+        # 從 device_map 生成設備分配列表
+        device_distribution = self._generate_device_distribution(device_map)
+
         for name, layer in custom_model.named_children():
             layers.append(layer)
-            if len(layers) == layer_balance[balance_idx]:
+            if len(layers) == device_distribution[layer_idx]['layer_balance']:
                 layer_config[layer_idx] = {"layer_list": layers.copy(),
-                                           "device": gpu_list[device_distribution[layer_idx]] if gpu_list != None and device_distribution != None else 'cpu',
+                                           "device": device_distribution[layer_idx]['device'],
                                            "trans_func": transform_funcs[layer_idx] if transform_funcs != None else None,
                                            "projector_type": projector_type,
-                                           "loss_fn":loss_fn if (layer_idx < len(layer_balance)-1 or self.is_adaptive) else nn.CrossEntropyLoss(),
+                                           "loss_fn":loss_fn if (layer_idx < len(device_distribution)-1 or self.is_adaptive) else nn.CrossEntropyLoss(),
                                            "num_classes": num_classes}
                 if self.is_adaptive:
                     layer_config[layer_idx]["classifier"] = classifier
-                device.append(gpu_list[device_distribution[layer_idx]] if gpu_list != None and device_distribution != None else 'cpu')
+                device.append(device_distribution[layer_idx]['device'])
                 layer_idx += 1
                 balance_idx += 1
                 layers.clear()
 
         return layer_config, device
+
+    def _generate_device_distribution(self, device_map):
+        """
+        從 device_map 生成設備分配列表
+        device_map: {"cuda:0": 1, "cuda:1": 1, "cuda:2": 1, "cuda:3": 3}
+        返回: [{"layer_balance": 1, "device": "cuda:0"}, {"layer_balance": 1, "device": "cuda:1"}, ...]
+        """
+        if device_map is None:
+            return None
+            
+        device_distribution = []
+        for device, count in device_map.items():
+            device_distribution.append({"layer_balance": count, "device": device})
+            
+        return device_distribution
     
 
     def _build_model(self):            
@@ -70,19 +87,18 @@ class SCPL_model(nn.Module):
         self.model = torch.nn.Sequential(*self.model)
 
     # check the relation of model layer、balance and num of gpu
-    def _model_check(self, custom_model, layer_balance, gpu_list, device_distribution, transform_funcs, loss_fn, num_classes, is_adaptive, classifier):
-        if len(custom_model) != sum(layer_balance):
+    def _model_check(self, custom_model, device_map, transform_funcs, loss_fn, num_classes, is_adaptive, classifier):
+        if len(custom_model) != sum(device_map.values()):
             raise ValueError('Layers of model don\'t equal to balance')
-        if device_distribution != None:
-            if len(layer_balance) != len(device_distribution):
-                raise ValueError('Cannot distribute all blocks, please check the length of balance and distribute')
-                
-            if gpu_list != None:
-                for i in device_distribution:
-                    if i >= len(gpu_list):
-                        raise ValueError('Cannot find gpu to distribute block')
+        if device_map != None:
+            for device, count in device_map.items():
+                if count == 0:
+                    raise ValueError(f'Layer balance for device {device} is 0, which means no layer will be assigned to this device.')
+                if device == None:
+                    raise ValueError(f'Device is None, which means no device will be assigned to this layer.')
+
         if transform_funcs != None:
-            if len(transform_funcs) != len(layer_balance):
+            if len(transform_funcs) != len(device_map):
                 raise ValueError('Cannot distribute transform_funcs, please check the length of transform_funcs')
 
         if loss_fn == "DeInfo" and num_classes == None:
