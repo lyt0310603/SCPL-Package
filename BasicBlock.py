@@ -8,14 +8,14 @@ from typing import List, Optional, Callable, Any, Tuple, Union
 
 
 class BasicBlock(nn.Module):
-    def __init__(self, layer_list, device, transform_func, projector_type, loss_fn, num_classes):
+    def __init__(self, layer_list, device, transform_func, projector_type, custom_projector, loss_fn, num_classes):
         super().__init__()
         self.device = device     
         
         self.transform_func = transform_func if transform_func is not None else self._default_transform_func
         
         self.encoder_layer = EncoderLayer(layer_list)
-        self.projector_layer = ProjectorLayer(projector_type)
+        self.projector_layer = ProjectorLayer(projector_type, custom_projector)
         self.loss_layer = LossLayer(self.device, loss_fn, num_classes, self.projector_layer)
             
     @staticmethod
@@ -39,8 +39,8 @@ class BasicBlock(nn.Module):
         return self.loss(x, true_y)
     
 class AdaptiveBasicBlock(BasicBlock):
-    def __init__(self, layer_list, device, transform_func, projector_type, loss_fn, num_classes, classifier):
-        super().__init__(layer_list, device, transform_func, projector_type, loss_fn, num_classes)
+    def __init__(self, layer_list, device, transform_func, projector_type, custom_projector, loss_fn, num_classes, classifier):
+        super().__init__(layer_list, device, transform_func, projector_type, custom_projector, loss_fn, num_classes)
         self.extra_layer = ExtraLayer(num_classes, classifier)
         
     def adaptive_test_step(self, result: Union[torch.Tensor, List[torch.Tensor]], mask: Optional[torch.Tensor] = None):

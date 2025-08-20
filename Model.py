@@ -6,7 +6,8 @@ from utils import Optimizer, LR_Scheduler, CPUThread
 
 
 class SCPL_model(nn.Module):
-    def __init__(self, custom_model, device_map, projector_type="i", loss_fn="CL", num_classes=None,
+    def __init__(self, custom_model, device_map, loss_fn="CL", num_classes=None,
+                 projector_type="i", custom_projector=None,
                  transform_funcs=None, 
                  optimizer_fn=torch.optim.Adam, optimizer_param={},
                  scheduler_fn: torch.optim.lr_scheduler=None, scheduler_param={},
@@ -18,7 +19,7 @@ class SCPL_model(nn.Module):
         
         self._model_check(custom_model, device_map, transform_funcs, loss_fn, num_classes, is_adaptive, classifier)
         self.model_config, self.device_list = self._get_layer_config(custom_model, device_map, transform_funcs, 
-                                                                      loss_fn, projector_type, num_classes, is_adaptive, classifier)
+                                                                      loss_fn, projector_type, custom_projector, num_classes, is_adaptive, classifier)
         self._build_model()
         self._init_optimizers(optimizer_fn, optimizer_param)
         self._init_schedulers(scheduler_fn, scheduler_param)
@@ -32,7 +33,7 @@ class SCPL_model(nn.Module):
             self.test = self.test_step
     
     # get the information of the user model
-    def _get_layer_config(self, custom_model, device_map, transform_funcs, loss_fn, projector_type, num_classes, classifier):
+    def _get_layer_config(self, custom_model, device_map, transform_funcs, loss_fn, projector_type, custom_projector, num_classes, classifier):
         layer_config = {}
         balance_idx = 0
         layer_idx = 0
@@ -49,10 +50,12 @@ class SCPL_model(nn.Module):
                                            "device": device_distribution[layer_idx]['device'],
                                            "trans_func": transform_funcs[layer_idx] if transform_funcs != None else None,
                                            "projector_type": projector_type,
+                                           "custom_projector": custom_projector,
                                            "loss_fn":loss_fn if (layer_idx < len(device_distribution)-1 or self.is_adaptive) else nn.CrossEntropyLoss(),
                                            "num_classes": num_classes}
                 if self.is_adaptive:
                     layer_config[layer_idx]["classifier"] = classifier
+
                 device.append(device_distribution[layer_idx]['device'])
                 layer_idx += 1
                 balance_idx += 1

@@ -1,17 +1,17 @@
 import torch
 import torch.nn as nn
-
+import copy
 
 class ProjectorLayer(nn.Module):
-    def __init__(self, projector_type):
+    def __init__(self, projector_type, custom_projector):
         super().__init__()
 
         self.projector = nn.Sequential(
             nn.Flatten(),
-            self._get_projector_head(projector_type)
+            self._get_projector_head(projector_type, custom_projector)
         )
             
-    def _get_projector_head(self, projector_type):
+    def _get_projector_head(self, projector_type, custom_projector):
         if projector_type == "i":
             return IdentityProjector()
         elif projector_type == "mlp":
@@ -20,6 +20,12 @@ class ProjectorLayer(nn.Module):
             return LinearProjector()
         elif projector_type == "DeInfo":
             return DeInfoProjector()
+        elif projector_type == "c":
+            if custom_projector is None:
+                raise ValueError("Custom projector is required when projector_type is 'c'")
+            if not isinstance(custom_projector, nn.Module):
+                raise ValueError("Custom projector must be an instance of torch.nn.Module")
+            return copy.deepcopy(custom_projector)
         else:
             raise ValueError(f"Unknown projector type: {projector_type}")
             
