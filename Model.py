@@ -214,7 +214,10 @@ class SCPL_model(nn.Module):
             output = [t.to(self.device_list[i+1 if i+1 < layers_num else i], non_blocking=True) for t in output]
             features_list.append(output)
             classifier_outputs.append(classifier_output)
-        return classifier_output, i, y, classifier_outputs
+            if i != 0:
+                if self.AdaptiveCondition(classifier_outputs[i-1], classifier_outputs[i]) == 1:
+                    break
+        return classifier_output, i, y
                 
     def AdaptiveCondition(self, prelayer, nowlayer):
         prelayer_maxarg = torch.argmax(prelayer)
@@ -223,7 +226,6 @@ class SCPL_model(nn.Module):
         cossimi = torch.mean(self.cos(prelayer , nowlayer))
         if nowlayer_maxarg == prelayer_maxarg and cossimi > self.costhreshold:
             return  1
-        
         return 0
     
     def _init_optimizers(self, optimizer_fn, optimizer_param):
