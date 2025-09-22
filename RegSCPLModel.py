@@ -5,7 +5,7 @@ from BasicBlock import BasicBlock, AdaptiveBasicBlock
 from utils import Optimizer, LR_Scheduler, CPUThread
 
 
-class SCPL_model(nn.Module):
+class RegSCPLModel(nn.Module):
     def __init__(self, custom_model, device_map, loss_fn="CL", num_classes=None,
                  projector_type="i", custom_projector=None,
                  transform_funcs=None, 
@@ -19,7 +19,7 @@ class SCPL_model(nn.Module):
         
         self._model_check(custom_model, device_map, transform_funcs, loss_fn, num_classes, is_adaptive, classifier)
         self.model_config, self.device_list = self._get_layer_config(custom_model, device_map, transform_funcs, 
-                                                                      loss_fn, projector_type, custom_projector, num_classes, is_adaptive, classifier)
+                                                                      loss_fn, projector_type, custom_projector, num_classes, classifier)
         self._build_model()
         self._init_optimizers(optimizer_fn, optimizer_param)
         self._init_schedulers(scheduler_fn, scheduler_param)
@@ -48,7 +48,7 @@ class SCPL_model(nn.Module):
             if len(layers) == device_distribution[layer_idx]['layer_balance']:
                 layer_config[layer_idx] = {"layer_list": layers.copy(),
                                            "device": device_distribution[layer_idx]['device'],
-                                           "trans_func": transform_funcs[layer_idx] if transform_funcs != None else None,
+                                           "transform_func": transform_funcs[layer_idx] if transform_funcs != None else None,
                                            "projector_type": projector_type,
                                            "custom_projector": custom_projector,
                                            "loss_fn":loss_fn if (layer_idx < len(device_distribution)-1 or self.is_adaptive) else nn.CrossEntropyLoss(),
@@ -160,7 +160,7 @@ class SCPL_model(nn.Module):
             for loss in layer_losses:
                 total_loss += loss.item()
             
-        return layer_features[-1], total_loss
+        return layer_features[-1], total_loss, labels_list[-1]
 
     def test_step(self, X, Y, mask=None):
         features_list = []
