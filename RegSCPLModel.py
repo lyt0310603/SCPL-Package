@@ -16,9 +16,10 @@ class RegSCPLModel(nn.Module):
         super().__init__()
         self.multi_t = multi_t
         self.is_adaptive = is_adaptive
+        self.device_distribution = self._generate_device_distribution(device_map)
         
-        self._model_check(custom_model, device_map, transform_funcs, loss_fn, num_classes, is_adaptive, classifier)
-        self.model_config, self.device_list = self._get_layer_config(custom_model, device_map, transform_funcs, 
+        self._model_check(custom_model, transform_funcs, loss_fn, num_classes, is_adaptive, classifier)
+        self.model_config, self.device_list = self._get_layer_config(custom_model, transform_funcs, 
                                                                       loss_fn, projector_type, custom_projector, num_classes, classifier)
         self._build_model()
         self._init_optimizers(optimizer_fn, optimizer_param)
@@ -34,19 +35,18 @@ class RegSCPLModel(nn.Module):
             
     
     # get the information of the user model
-    def _get_layer_config(self, custom_model, device_map, transform_funcs, loss_fn, projector_type, custom_projector, num_classes, classifier):
+    def _get_layer_config(self, custom_model, transform_funcs, loss_fn, projector_type, custom_projector, num_classes, classifier):
         layer_config = {}
         balance_idx = 0
         layer_idx = 0
         layers = []
         device = []
 
-        # 從 device_map 生成設備分配列表
-        device_distribution = self._generate_device_distribution(device_map)
+        device_distribution = self.device_distribution
 
         for name, layer in custom_model.named_children():
             layers.append(layer)
-            if len(layers) == device_distribution[layer_idx]['layer_balance']:
+            if len(layers) == device_distribution[layer_idx]['layers']:
                 layer_config[layer_idx] = {"layer_list": layers.copy(),
                                            "device": device_distribution[layer_idx]['device'],
                                            "transform_func": transform_funcs[layer_idx] if transform_funcs != None else None,
@@ -66,18 +66,37 @@ class RegSCPLModel(nn.Module):
 
     def _generate_device_distribution(self, device_map):
         """
-        從 device_map 生成設備分配列表
-        device_map: {"cuda:0": 1, "cuda:1": 1, "cuda:2": 1, "cuda:3": 3}
-        返回: [{"layer_balance": 1, "device": "cuda:0"}, {"layer_balance": 1, "device": "cuda:1"}, ...]
+        從 device_map 生成設備分配列表，支援兩種格式：
+        1) dict: {"cuda:0": 1, "cuda:1": 2}
+        2) list: [{"device": "cuda:0", "layers": 1}, {"device": "cuda:0", "layers": 1}]
+        返回: [{"layers": 1, "device": "cuda:0"}, {"layers": 1, "device": "cuda:1"}, ...]
         """
         if device_map is None:
             return None
-            
+
         device_distribution = []
-        for device, count in device_map.items():
-            device_distribution.append({"layer_balance": count, "device": device})
-            
-        return device_distribution
+
+        if isinstance(device_map, dict):
+            for device, count in device_map.items():
+                device_distribution.append({"layers": count, "device": device})
+            return device_distribution
+
+        if isinstance(device_map, list):
+            for idx, item in enumerate(device_map):
+                if not isinstance(item, dict):
+                    raise TypeError(f"device_map[{idx}] must be a dict with keys 'device' and 'layers'")
+                if "device" not in item:
+                    raise KeyError(f"device_map[{idx}] missing required key: 'device'")
+
+                if "layers" in item:
+                    layers = item["layers"]
+                else:
+                    raise KeyError(f"device_map[{idx}] missing required key: 'layers'")
+
+                device_distribution.append({"layers": layers, "device": item["device"]})
+            return device_distribution
+
+        raise TypeError("device_map must be dict or list")
     
 
     def _build_model(self):            
@@ -91,18 +110,25 @@ class RegSCPLModel(nn.Module):
         self.model = torch.nn.Sequential(*self.model)
 
     # check the relation of model layer、balance and num of gpu
-    def _model_check(self, custom_model, device_map, transform_funcs, loss_fn, num_classes, is_adaptive, classifier):
-        if len(custom_model) != sum(device_map.values()):
-            raise ValueError(f'Layers of model don\'t equal to balance, {len(custom_model)} and {sum(device_map.values())}')
-        if device_map != None:
-            for device, count in device_map.items():
-                if count == 0:
-                    raise ValueError(f'Layer balance for device {device} is 0, which means no layer will be assigned to this device.')
-                if device == None:
-                    raise ValueError(f'Device is None, which means no device will be assigned to this layer.')
+    def _model_check(self, custom_model, transform_funcs, loss_fn, num_classes, is_adaptive, classifier):
+        device_distribution = self.device_distribution
+        if device_distribution is None:
+            raise ValueError('device_map cannot be None')
+
+        total_balance = sum([item["layers"] for item in device_distribution])
+        if len(custom_model) != total_balance:
+            raise ValueError(f'Layers of model don\'t equal to balance, {len(custom_model)} and {total_balance}')
+
+        for item in device_distribution:
+            device = item["device"]
+            count = item["layers"]
+            if count <= 0:
+                raise ValueError(f'Layer balance for device {device} must be > 0.')
+            if device is None:
+                raise ValueError('Device is None, which means no device will be assigned to this layer.')
 
         if transform_funcs != None:
-            if len(transform_funcs) != len(device_map):
+            if len(transform_funcs) != len(device_distribution):
                 raise ValueError('Cannot distribute transform_funcs, please check the length of transform_funcs')
 
         if loss_fn == "DeInfo" and num_classes == None:
