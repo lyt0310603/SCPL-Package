@@ -24,10 +24,10 @@ class RegSCPLModel(nn.Module):
         self._init_optimizers(optimizer_fn, optimizer_param)
         self._init_schedulers(scheduler_fn, scheduler_param)
 
-        self.train_step = self.train_step
-        self.test_step = self.test_step
+        self.training_step = self.train_step
+        self.validation_step = self.test_step
         if self.is_adaptive:
-            self.test_step = self.adaptive_test_step
+            self.validation_step = self.adaptive_test_step
             self.patiencecount = patiencethreshold
             self.costhreshold = cosinesimthreshold
             self.cos = nn.CosineSimilarity(dim=1, eps=1e-6)
@@ -286,6 +286,6 @@ class RegSCPLModel(nn.Module):
 
     def forward(self, X, Y, mask=None):
         if self.training:
-            return self.train_step(X, Y, mask)
+            return self.training_step(X, Y, mask)
         else:
-            return self.test_step(X, Y, mask)
+            return self.validation_step(X, Y, mask)
