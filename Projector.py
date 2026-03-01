@@ -1,32 +1,38 @@
 import torch
 import torch.nn as nn
+import copy
 
-
-class ProjLayer(nn.Module):
-    def __init__(self, proj_type):
+class ProjectorLayer(nn.Module):
+    def __init__(self, projector_type, custom_projector):
         super().__init__()
 
-        self.proj = nn.Sequential(
+        self.projector = nn.Sequential(
             nn.Flatten(),
-            self._get_proj_head(proj_type)
+            self._get_projector_head(projector_type, custom_projector)
         )
             
-    def _get_proj_head(self, proj_type):
-        if proj_type == "i":
-            return Identity_Projector()
-        elif proj_type == "mlp":
-            return MLP_Projector()
-        elif proj_type == "l":
-            return Linear_Projector()
-        elif proj_type == "DeInfo":
-            return DeInfo_Projector()
+    def _get_projector_head(self, projector_type, custom_projector):
+        if projector_type == "i":
+            return IdentityProjector()
+        elif projector_type == "mlp":
+            return MLPProjector()
+        elif projector_type == "l":
+            return LinearProjector()
+        elif projector_type == "DeInfo":
+            return DeInfoProjector()
+        elif projector_type == "c":
+            if custom_projector is None:
+                raise ValueError("Custom projector is required when projector_type is 'c'")
+            if not isinstance(custom_projector, nn.Module):
+                raise ValueError("Custom projector must be an instance of torch.nn.Module")
+            return copy.deepcopy(custom_projector)
         else:
-            raise ValueError(f"Unknown projector type: {proj_type}")
+            raise ValueError(f"Unknown projector type: {projector_type}")
             
     def forward(self, x):
-        return self.proj(x)
+        return self.projector(x)
 
-class Linear_Projector(nn.Module):
+class LinearProjector(nn.Module):
     def __init__(self):
         super().__init__()
         self.layer = nn.LazyLinear(1024)
@@ -34,7 +40,7 @@ class Linear_Projector(nn.Module):
     def forward(self, x):
         return self.layer(x).to(x.device)
 
-class Identity_Projector(nn.Module):
+class IdentityProjector(nn.Module):
     def __init__(self):
         super().__init__()
         self.layer = nn.Identity()
@@ -42,7 +48,7 @@ class Identity_Projector(nn.Module):
     def forward(self, x):
         return self.layer(x).to(x.device)
 
-class MLP_Projector(nn.Module):
+class MLPProjector(nn.Module):
     def __init__(self):
         super().__init__()
         self.layer = nn.Sequential(
@@ -54,7 +60,7 @@ class MLP_Projector(nn.Module):
     def forward(self, x):      
         return self.layer(x).to(x.device)
 
-class DeInfo_Projector(nn.Module):
+class DeInfoProjector(nn.Module):
     def __init__(self):
         super().__init__()
         self.layer = nn.Sequential(

@@ -1,46 +1,43 @@
 import torch
 import torch.nn as nn
-import random
-import numpy as np
-import math
 import torch.nn.functional as F
 
 
 class LossLayer:
-    def __init__(self, device, loss_fn, n_classes, projector):
+    def __init__(self, device, loss_function, num_classes, projector_layer):
         self.device = device
-        self.n_classes = n_classes
-        self.projector = projector
-        self.loss_fn = loss_fn
+        self.num_classes = num_classes
+        self.projector_layer = projector_layer
+        self.loss_function = loss_function
         
         if device == 'cpu':
             self.tensor_type = torch.FloatTensor
         else:
             self.tensor_type = torch.cuda.FloatTensor
 
-        if isinstance(loss_fn, str):
-            if loss_fn == "CL":
+        if isinstance(loss_function, str):
+            if loss_function == "CL":
                 self.loss = self.ContrastiveLoss
-            elif loss_fn == "DeInfo":
+            elif loss_function == "DeInfo":
                 self.loss = self.DeInfoLoss
             else:
-                raise ValueError(f"Unknown loss function: {loss_fn}")
+                raise ValueError(f"Unknown loss function: {loss_function}")
         else:
             self.loss = self.normal_loss
 
-    def ContrastiveLoss(self, x, label):   
-        x = self.projector(x)
-        proj_out = x
+    def ContrastiveLoss(self, features, labels):   
+        features = self.projector_layer(features)
+        projected_output = features
         
-        x = nn.functional.normalize(x)
-        label = label.view(-1, 1)
-        batch_size = label.shape[0]
-        mask = torch.eq(label, label.T).type(self.tensor_type)
+        features = nn.functional.normalize(features)
+        labels = labels.view(-1, 1)
+        batch_size = labels.shape[0]
+        mask = torch.eq(labels, labels.T).type(self.tensor_type)
         
         denom_mask = torch.scatter(torch.ones_like(mask, device=self.device), 1,
                                    torch.arange(batch_size, device=self.device).view(-1, 1), 0)
     
-        logits = torch.div(torch.matmul(x, x.T), 0.1)
+        logits = torch.div(torch.matmul(features, features.T), 0.1)
         logits_max, _ = torch.max(logits, dim=1, keepdim=True)
         logits = logits - logits_max.detach()
         
@@ -49,39 +46,39 @@ class LossLayer:
         loss = (denom_mask * mask * prob).sum(1) / mask.sum(1)
         loss = -loss
         loss = loss.view(1, batch_size).mean()   
-        return loss, proj_out
+        return loss, projected_output
 
-    def DeInfoLoss(self, x, label):
-        x = self.projector(x)
-        proj_out = x
-        num_features = x.cpu().shape[1]
-        nor_x =  nn.functional.normalize(x)
-        batch_size = label.shape[0]
+    def DeInfoLoss(self, features, labels):
+        features = self.projector_layer(features)
+        projected_output = features
+        num_features = features.cpu().shape[1]
+        normalized_features =  nn.functional.normalize(features)
+        batch_size = labels.shape[0]
         
         # covar
-        x_mean = nor_x - nor_x.mean(dim=0)
-        cov_x = (x_mean.T @ x_mean) / (batch_size)
-        cov_loss = off_diagonal(cov_x).pow(2).sum().div(num_features)
+        features_mean = normalized_features - normalized_features.mean(dim=0)
+        cov_features = (features_mean.T @ features_mean) / (batch_size)
+        cov_loss = off_diagonal(cov_features).pow(2).sum().div(num_features)
 
         # invar
-        target_onehot = to_one_hot(label.to(self.device), self.n_classes)
+        target_onehot = to_one_hot(labels.to(self.device), self.num_classes)
         target_sm = similarity_matrix(target_onehot)
-        x_sm = similarity_matrix(nor_x)
-        invar_loss = F.mse_loss(target_sm.to(self.device), x_sm.to(self.device))
+        features_sm = similarity_matrix(normalized_features)
+        invar_loss = F.mse_loss(target_sm.to(self.device), features_sm.to(self.device))
         
         # var
-        x_mean = nor_x - nor_x.mean(dim=0)
-        std_x = torch.sqrt(x_mean.var(dim=0) + 0.0000001) 
-        var_loss = torch.mean(F.relu(1 - std_x)) / (batch_size)
+        features_mean = normalized_features - normalized_features.mean(dim=0)
+        std_features = torch.sqrt(features_mean.var(dim=0) + 0.0000001) 
+        var_loss = torch.mean(F.relu(1 - std_features)) / (batch_size)
 
         loss = ( var_loss * 1.0 + invar_loss * 1.0 + cov_loss * 1.0)
-        return loss, proj_out
+        return loss, projected_output
 
-    def normal_loss(self, x, label):
-        return self.loss_fn(x, label), None
+    def normal_loss(self, features, labels):
+        return self.loss_function(features, labels), None
     
-    def get_loss(self, x, true_y):
-        return self.loss(x, true_y)
+    def get_loss(self, features, true_labels):
+        return self.loss(features, true_labels)
 
 
 def off_diagonal(x):
