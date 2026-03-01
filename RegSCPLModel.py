@@ -24,15 +24,14 @@ class RegSCPLModel(nn.Module):
         self._init_optimizers(optimizer_fn, optimizer_param)
         self._init_schedulers(scheduler_fn, scheduler_param)
 
+        self.train_step = self.train_step
+        self.test_step = self.test_step
         if self.is_adaptive:
-            self.train_step = self.adaptive_train_step
             self.test_step = self.adaptive_test_step
             self.patiencecount = patiencethreshold
             self.costhreshold = cosinesimthreshold
             self.cos = nn.CosineSimilarity(dim=1, eps=1e-6)
-        else:
-            self.train_step = self.train_step
-            self.test_step = self.test_step
+            
     
     # get the information of the user model
     def _get_layer_config(self, custom_model, device_map, transform_funcs, loss_fn, projector_type, custom_projector, num_classes, classifier):
@@ -161,7 +160,12 @@ class RegSCPLModel(nn.Module):
         else:
             for loss in layer_losses:
                 total_loss += loss.item()
-            
+        
+        if self.is_adaptive:
+            features = self.model[-1].projector_layer(layer_features[-1])
+            classifier_output = self.model[-1].extra_layer(features)
+            return classifier_output, total_loss, labels_list[-1]
+
         return layer_features[-1], total_loss, labels_list[-1]
 
     def test_step(self, X, Y, mask=None):
@@ -188,56 +192,6 @@ class RegSCPLModel(nn.Module):
             features_list.append(output)
             
         return output[0], y
-
-    def adaptive_train_step(self, X, Y, mask=None):
-        features_list = []
-        labels_list = []
-        masks_list = []
-        total_loss = 0
-        layer_losses = []
-        layer_features = []
-        threads = []
-        layers_num = len(self.model_config)
-        for i in range(0, layers_num):
-            labels_list.append(Y.to(self.device_list[i]))
-            if mask is not None:
-                masks_list.append(mask.to(self.device_list[i]))
-            else:
-                masks_list.append(None)
-        features_list.append([X.to(self.device_list[0], non_blocking=True)])        
-        
-        for i in range(layers_num):
-            self.model[i].train()
-
-        for optimizer in self.optimizers:
-            optimizer.zero_grad()
-            
-        for i in range(0, layers_num):
-            output, hidden_state = self.model[i](features_list[-1], masks_list[i])
-            layer_features.append(hidden_state)
-            
-            args = (self.model[i], self.optimizers[i].optimizer, hidden_state, labels_list[i])
-            
-            if not self.multi_t:
-                layer_losses.append(self._loss_backward_update(*args))
-            else:
-                threads.append(CPUThread(target=self._loss_backward_update, args=args))
-                threads[-1].start()
-                
-            detached_list = [t.detach().to(self.device_list[i+1 if i+1 < layers_num else i], non_blocking=True) for t in output]
-            features_list.append(detached_list)
-            
-        features = self.model[-1].projector_layer(layer_features[-1])
-        classifier_output = self.model[-1].extra_layer(features)
-        
-        if self.multi_t:
-            for t in range(len(threads)):
-                    total_loss += threads[t].get_result().item()
-        else:
-            for loss in layer_losses:
-                total_loss += loss.item()
-            
-        return classifier_output, total_loss, labels_list[-1]
 
     def adaptive_test_step(self, X, Y, mask=None):
         self.patiencecount = 0
