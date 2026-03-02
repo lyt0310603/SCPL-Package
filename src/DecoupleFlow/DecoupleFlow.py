@@ -5,7 +5,7 @@ from BasicBlock import BasicBlock, AdaptiveBasicBlock
 from utils import Optimizer, LR_Scheduler, CPUThread
 
 
-class RegSCPLModel(nn.Module):
+class DecoupleFlow(nn.Module):
     def __init__(self, custom_model, device_map, loss_fn="CL", num_classes=None,
                  projector_type="i", custom_projector=None,
                  transform_funcs=None, 
