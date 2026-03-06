@@ -1,8 +1,8 @@
 import torch
 import torch.nn as nn
 import time
-from BasicBlock import BasicBlock, AdaptiveBasicBlock
-from utils import Optimizer, LR_Scheduler, CPUThread
+from .BasicBlock import BasicBlock, AdaptiveBasicBlock
+from .utils import Optimizer, LR_Scheduler, CPUThread
 
 
 class DecoupleFlow(nn.Module):

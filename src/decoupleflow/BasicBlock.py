@@ -1,7 +1,7 @@
-from Loss import LossLayer
-from Projector import ProjectorLayer
-from Encoder import EncoderLayer
-from Extra import ExtraLayer
+from .Loss import LossLayer
+from .Projector import ProjectorLayer
+from .Encoder import EncoderLayer
+from .Extra import ExtraLayer
 import torch
 import torch.nn as nn
 from typing import List, Optional, Callable, Any, Tuple, Union
