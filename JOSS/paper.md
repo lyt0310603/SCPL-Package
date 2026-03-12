@@ -33,13 +33,7 @@ DecoupleFlow adopts a modular, parameterized design for decoupled deep learning 
 
 DecoupleFlow transforms a user-defined model into a stack of DecoupleFlow Blocks. Each block contains three core components: an encoder, a projector, and a local loss module. This structure allows each block to optimize a local objective while preserving a training workflow that remains close to standard model development practice. In typical classification settings, the classifier is placed in the final block; accordingly, the final block does not attach a projector head and is updated with cross-entropy loss. In addition, DecoupleFlow provides an adaptive block variant; compared with the standard block design, each block includes an extra classifier to support early-exit condition evaluation during inference.
 
-\begin{figure}[H]
-
-{\centering \includegraphics[width=0.9\linewidth]{fig\DecoupleFlow_Block.jpg} 
-}
-
-\caption{DecoupleFlow Block containing an encoder, projector head, and local objective loss}\label{fig:block}
-\end{figure}
+![DecoupleFlow Block containing an encoder, projector head, and local objective loss](fig/DecoupleFlow_Block.jpg)
 
 These components are exposed through a parameterized interface, allowing users to configure decoupled workflows without extensive changes to their existing training code. Key configuration options include:
 * `device_map`, which specifies how model blocks are assigned across devices;
