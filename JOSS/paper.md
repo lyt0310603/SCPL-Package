@@ -23,7 +23,7 @@ DecoupleFlow is a PyTorch-based package that helps users transform deep learning
 <!-- A section that clearly illustrates the research purpose of the software and places it in the context of related work. This should clearly state what problems the software is designed to solve, who the target audience is, and its relation to other work. -->
 Decoupled architectures are deep learning training methods that partition a model into multiple blocks and reduce gradient dependency across them, allowing more independent optimization. Such methods have been studied to address limitations of conventional end-to-end backpropagation, including high memory cost and limited parallelism.
 
-Recent work, including Supervised Contrastive Parallel Learning (SCPL) and Decoupled Learning with Information Regularization (DeInfoReg), has shown the promise of this paradigm. However, these methods are often difficult to adopt because they require substantial model refactoring and customized configuration of block partitioning, projection heads, and loss functions.
+Recent work, including Supervised Contrastive Parallel Learning (SCPL) and Decoupled Learning with Information Regularization (DeInfoReg), has demonstrated the potential of decoupled learning combined with local representation-based objectives, such as supervised contrastive learning and information regularization. However, these methods are often difficult to adopt because they require substantial model refactoring and customized configuration of block partitioning, projection heads, and loss functions.
 
 DecoupleFlow was developed to reduce this implementation burden. It provides a parameterized framework for building decoupled training workflows, making these methods more accessible to researchers and practitioners and supporting reproducible experimentation.
 
@@ -45,6 +45,55 @@ These components are exposed through a parameterized interface, allowing users t
 
 This design provides a common implementation framework for existing decoupled learning methods. In particular, DecoupleFlow modularizes key mechanisms from Supervised Contrastive Parallel Learning (SCPL) and Decoupled Learning with Information Regularization (DeInfoReg), enabling both workflows to be expressed within a unified software structure. As a result, the package improves reproducibility, supports method comparison, and provides a practical basis for extending decoupled learning in future research.
 
-# Experiment
+# Research impact statement
+<!-- Evidence of realized impact (publications, external use, integrations) or credible near-term significance (benchmarks, reproducible materials, community-readiness signals). The evidence should be compelling and specific, not aspirational. -->
+DecoupleFlow modularizes the core mechanisms of SCPL and DeInfoReg. Although the effectiveness of these methods has been established in their original publications, DecoupleFlow focuses on making them easier to implement, reproduce, and extend within a unified software framework. To demonstrate the practical research value of this framework, we evaluated DecoupleFlow under representative large-batch training settings.
+
+On DBpedia with a batch size of 1024, DecoupleFlow-based implementations of SCPL and DeInfoReg achieved competitive predictive performance while improving training efficiency compared with standard backpropagation (BP). Both methods slightly outperformed BP in accuracy and reduced average epoch training time, demonstrating that DecoupleFlow can support effective and efficient decoupled training under large-batch settings.
+
+| Dataset  | Method              | Accuracy (%)     | Training time (s/epoch) | Speedup |
+|----------|---------------------|------------------|--------------------------|---------|
+| DBpedia  | BP                  | 98.65 +- 0.14    | 121.31                   | 1.00x   |
+| DBpedia  | DecoupleFlow (SCPL) | 98.73 +- 0.03    | 98.63                    | 1.23x   |
+| DBpedia  | DecoupleFlow (DeInfoReg) | 98.74 +- 0.05 | 101.94                   | 1.19x   |
+
+# Usage
+A typical DecoupleFlow workflow starts from a user-defined PyTorch model and a device mapping that specifies how layers are partitioned across devices. The user can then select the local loss function, projection head type, and optional execution features such as multithreading or adaptive inference through parameters.
+
+```python
+import torch
+import torch.nn as nn
+from decoupleflow import DecoupleFlow
+
+# A user-defined backbone model.
+backbone = nn.Sequential(
+    nn.Linear(768, 512),
+    nn.ReLU(),
+    nn.Linear(512, 256),
+    nn.ReLU(),
+    nn.Linear(256, 4),
+)
+
+# Partition the model into three blocks and assign them to devices.
+device_map = {"cuda:0": 2, "cuda:1": 2, "cuda:2": 1}
+
+model = DecoupleFlow(
+    custom_model=backbone,
+    device_map=device_map,
+    loss_fn="CL",              # or "DeInfo"
+    projector_type="i",        # use Identity projector head
+    optimizer_fn=torch.optim.Adam,
+    optimizer_param={"lr": 1e-3},
+    multi_t=True,
+    is_adaptive=False,
+)
+
+x = torch.randn(32, 768)
+y = torch.randint(0, 4, (32,))
+
+features, loss, labels = model.train_step(x, y)
+output, labels = model.test_step(x, y)
+```
+In this example, `device_map` defines block partitioning and device assignment, `loss_fn` selects the local objective, `projector_type` controls the projection head design, and `multi_t` enables multithreaded training.
 # AI usage disclosure
 # Reference
