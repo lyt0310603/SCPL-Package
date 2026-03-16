@@ -1,25 +1,88 @@
-**This tool is still under continuous development. The operation instructions and related descriptions are for reference only.**
+# DecoupleFlow
 
-# SCPL-Package
+DecoupleFlow is a PyTorch-based toolkit for converting a user-defined model into a decoupled training architecture.  
+It focuses on practical implementations of SCPL-style and DeInfoReg-style workflows, with model partitioning and multi-device execution support for efficient training.
 
-SCPL-Package is a tool designed to accelerate the training of deep learning models. It allows users to input custom model architectures and efficiently distribute the internal layers across multiple GPUs for distributed training. Its core technologies include gradient truncation, local objectives, and parallel processing, which significantly enhance model training speed.
+## Project Status
+
+This project is under active development.  
+APIs, behavior, and documentation may change between versions.
+
+## What This Package Solves
+
+Decoupled learning methods can improve training efficiency, but they usually require significant refactoring of model code.  
+DecoupleFlow reduces this engineering overhead by providing a configurable framework that:
+
+- partitions models into training blocks,
+- assigns blocks across devices,
+- attaches local objectives to intermediate blocks, and
+- keeps the training loop close to common PyTorch workflows.
 
 ## Key Features
 
-- **Dynamic Model Allocation**: Redistributes internal layers across multiple GPUs based on the user-provided model architecture.
-- **Gradient Truncation**: Reduces inter-device communication overhead through gradient truncation techniques, improving training efficiency.
-- **Local Objectives**: Optimizes local training performance using contrastive learning as the local objective.
-- **Parallel Processing**: Supports multi-GPU parallel processing to further accelerate large-scale model training.
+- **Model Refactoring for Decoupled Training**: Transform a standard model into block-wise training components.
+- **Pipeline-Style Partitioning**: Split models into sequential blocks and distribute them across GPUs.
+- **Local Objective Support**: Enable local losses (for example, contrastive-style objectives) at block level.
+- **Flexible Configuration**: Control partitioning, optimization setup, and execution behavior through parameters.
+- **Adaptive Extensions**: Support adaptive inference related features for decoupled architectures.
 
-## Core Technologies
+## Method Background
 
-### **Introduction to SCPL**
-Supervised Contrastive Parallel Learning (SCPL) decouples backpropagation (BP) through multiple local training objectives and supervised contrastive learning. It transforms the long gradient flow in traditional deep networks into multiple short gradient flows and implements pipeline-based parallel processing, enabling independent training of parameters at each layer. This method addresses the inefficiency caused by "backward locking" in backpropagation, achieving faster training speeds compared to conventional BP.  
-GitHub: [Here](https://github.com/minyaho/SCPL/tree/main?tab=readme-ov-file)
+### SCPL
+Supervised Contrastive Parallel Learning (SCPL) decouples end-to-end backpropagation using local objectives and supervised contrastive learning, reducing backward dependency across the whole network.  
+Reference implementation: [SCPL GitHub](https://github.com/minyaho/SCPL/tree/main?tab=readme-ov-file)
 
-### **Introduction to DeInfoReg**
-Decoupled Supervised Learning with Information Regularization (DeInfoReg) enhances model performance and flexibility compared to SCPL by designing new local loss functions and model structures. The new model structure features Adaptive Inference Paths, Dynamic Expanded Layers, and Dynamic Extended Layers. This tool replicates only the new local loss function and Adaptive Inference Path.  
-GitHub: [Here](https://github.com/ianzih/Decoupled-Supervised-Learning-for-Information-Regularization/tree/master)
+### DeInfoReg
+Decoupled Supervised Learning with Information Regularization (DeInfoReg) extends decoupled learning with information-regularized local objectives and adaptive architectural ideas.  
+Reference implementation: [DeInfoReg GitHub](https://github.com/ianzih/Decoupled-Supervised-Learning-for-Information-Regularization/tree/master)
 
-## Usage
+## Quick Start
+
+### 1) Download and install DecoupleFlow
+
+```bash
+git clone https://github.com/lyt0310603/DecoupleFlow.git
+pip install -e .
+```
+
+### 2) Minimal usage example
+
+```python
+import torch
+import torch.nn as nn
+from decoupleflow import DecoupleFlow
+
+# Define a simple backbone model.
+backbone = nn.Sequential(
+    nn.Linear(768, 512),
+    nn.ReLU(),
+    nn.Linear(512, 256),
+    nn.ReLU(),
+    nn.Linear(256, 4),
+)
+
+# Partition layers into blocks and map blocks to devices.
+device_map = {"cuda:0": 2, "cuda:1": 2, "cuda:2": 1}
+
+model = DecoupleFlow(
+    custom_model=backbone,
+    device_map=device_map,
+    loss_fn="CL",              # or "DeInfo"
+    projector_type="i",        # Identity projector
+    optimizer_fn=torch.optim.Adam,
+    optimizer_param={"lr": 1e-3},
+    multi_t=True,
+    is_adaptive=False,
+)
+
+x = torch.randn(32, 768)
+y = torch.randint(0, 4, (32,))
+
+features, loss, labels = model.train_step(x, y)
+output, labels = model.test_step(x, y)
+```
+
+## Documentation
 Detailed usage instructions (Chinese only): [Here](https://hackmd.io/@b3NdIM1JStCqtPPOfgoapw/HyM1ei860)
+
+
