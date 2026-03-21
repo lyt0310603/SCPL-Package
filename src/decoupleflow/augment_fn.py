@@ -3,9 +3,6 @@ from torch.utils.data import DataLoader, Dataset
 import random
 from nltk.corpus import wordnet
 
-# 確保下載 WordNet 數據（如果尚未下載）
-# nltk.download('wordnet') # This line is removed as per the edit hint.
-
 class _AugmentedDataset(Dataset):
     def __init__(self, original_dataset, data_type, **kwargs):
         self.original_dataset = original_dataset
@@ -101,44 +98,40 @@ def _get_synonyms(dataset):
 def _synonym_replacement(sentence, probability, synonyms):
     words = sentence.split()
     num_words = max(1, int(probability * len(words)))
-    eligible_words = [word for word in words if word in synonyms]  # 篩選出存在同義詞的單詞
+    eligible_words = [word for word in words if word in synonyms]
 
     if len(eligible_words) == 0:
-        return sentence  # 如果沒有可替換的單詞，直接返回原句子
+        return sentence
 
-    # 隨機選擇 num_words 個單詞進行替換，如果 num_words 大於可替換的單詞數量，則選擇全部可替換單詞
     words_to_replace = random.sample(eligible_words, min(num_words, len(eligible_words)))
     
     new_words = words.copy()    
-    # 替換選定的單詞
     new_words = []
     for word in words:
         if word in words_to_replace:
-            synonym_list = synonyms[word]  # 取出該單詞對應的同義詞列表
-            new_word = random.choice(synonym_list)  # 隨機選擇一個同義詞
-            new_words.append(new_word)  # 用同義詞替換
+            synonym_list = synonyms[word]
+            new_word = random.choice(synonym_list)
+            new_words.append(new_word)
         else:
-            new_words.append(word)  # 保留原單詞
+            new_words.append(word)
 
-    return ' '.join(new_words)  # 將列表中的單詞重新組合為句子
+    return ' '.join(new_words)
 
 def _random_insertion(sentence, probability, synonyms):
     words = sentence.split()
     num_words = max(1, int(probability * len(words)))
-    eligible_words = [word for word in words if word in synonyms]  # 篩選出存在於同義詞字典中的單詞
+    eligible_words = [word for word in words if word in synonyms]
 
     if len(eligible_words) == 0:
-        return sentence  # 如果沒有可插入的單詞，直接返回原句子
+        return sentence
 
-    # 隨機選擇 num_words 個單詞表示要做隨機位置插入同義字，如果 num_words 大於可選擇的單詞數量，則選擇全部單詞
     words_to_insert = random.sample(eligible_words, min(num_words, len(eligible_words)))
 
-    # 對每個被選擇的單詞，隨機抽取同義字並插入句子的隨機位置
     for word in words_to_insert:
         synonym_list = synonyms[word]
-        random_synonym = random.choice(synonym_list)  # 隨機選擇一個同義詞
-        random_idx = random.randint(0, len(words))  # 隨機選擇插入位置
-        words.insert(random_idx, random_synonym)  # 在句子的隨機位置插入該同義詞 
+        random_synonym = random.choice(synonym_list)
+        random_idx = random.randint(0, len(words))
+        words.insert(random_idx, random_synonym)
     return ' '.join(words)
 
 def _random_swap(sentence, probability):

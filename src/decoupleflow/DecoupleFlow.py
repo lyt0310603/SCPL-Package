@@ -34,7 +34,6 @@ class DecoupleFlow(nn.Module):
             self.cos = nn.CosineSimilarity(dim=1, eps=1e-6)
             
     
-    # get the information of the user model
     def _get_layer_config(self, custom_model, transform_funcs, loss_fn, projector_type, custom_projector, num_classes, classifier):
         layer_config = {}
         balance_idx = 0
@@ -65,12 +64,6 @@ class DecoupleFlow(nn.Module):
         return layer_config, device
 
     def _generate_device_distribution(self, device_map):
-        """
-        從 device_map 生成設備分配列表，支援兩種格式：
-        1) dict: {"cuda:0": 1, "cuda:1": 2}
-        2) list: [{"device": "cuda:0", "layers": 1}, {"device": "cuda:0", "layers": 1}]
-        返回: [{"layers": 1, "device": "cuda:0"}, {"layers": 1, "device": "cuda:1"}, ...]
-        """
         if device_map is None:
             return None
 
@@ -109,7 +102,6 @@ class DecoupleFlow(nn.Module):
         
         self.model = torch.nn.Sequential(*self.model)
 
-    # check the relation of model layer、balance and num of gpu
     def _model_check(self, custom_model, transform_funcs, loss_fn, num_classes, is_adaptive, classifier):
         device_distribution = self.device_distribution
         if device_distribution is None:
@@ -134,7 +126,6 @@ class DecoupleFlow(nn.Module):
         if loss_fn == "DeInfo" and num_classes == None:
             raise ValueError('DeInfo Loss need pass class nums')
 
-    # test to print
     def print(self):
         for layer in self.model:
             for name, param in layer.named_parameters():
@@ -202,7 +193,6 @@ class DecoupleFlow(nn.Module):
         features_list.append([X.to(self.device_list[0], non_blocking=True)])
         layers_num = len(self.model_config)
 
-        # 初始化 masks_list，確保長度與層數一致
         for i in range(layers_num):
             if mask is not None:
                 masks_list.append(mask.to(self.device_list[i]))
@@ -230,7 +220,6 @@ class DecoupleFlow(nn.Module):
         
         layers_num = len(self.model_config)
 
-        # 初始化 masks_list，確保長度與層數一致
         for i in range(layers_num):
             if mask is not None:
                 masks_list.append(mask.to(self.device_list[i]))

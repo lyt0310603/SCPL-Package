@@ -55,18 +55,15 @@ class LossLayer:
         normalized_features =  nn.functional.normalize(features)
         batch_size = labels.shape[0]
         
-        # covar
         features_mean = normalized_features - normalized_features.mean(dim=0)
         cov_features = (features_mean.T @ features_mean) / (batch_size)
         cov_loss = off_diagonal(cov_features).pow(2).sum().div(num_features)
 
-        # invar
         target_onehot = to_one_hot(labels.to(self.device), self.num_classes)
         target_sm = similarity_matrix(target_onehot)
         features_sm = similarity_matrix(normalized_features)
         invar_loss = F.mse_loss(target_sm.to(self.device), features_sm.to(self.device))
         
-        # var
         features_mean = normalized_features - normalized_features.mean(dim=0)
         std_features = torch.sqrt(features_mean.var(dim=0) + 0.0000001) 
         var_loss = torch.mean(F.relu(1 - std_features)) / (batch_size)

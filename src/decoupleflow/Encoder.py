@@ -6,15 +6,12 @@ from typing import Tuple, List, Union
 class EncoderLayer(nn.Module):
     def __init__(self, layers):
         super().__init__()
-        
-        # 初始化時分析每層的處理方式
         self.layers = nn.ModuleList()
         self.process_functions = []
         self.mask = None
         
         for layer in layers:
             self.layers.append(layer)
-            # 根據層的類型決定處理函數
             if isinstance(layer, nn.LSTM):
                 self.process_functions.append(self._process_lstm)
             elif isinstance(layer, (nn.GRU, nn.RNN)):
@@ -64,5 +61,5 @@ class EncoderLayer(nn.Module):
         self.mask = mask
         for layer, process_function in zip(self.layers, self.process_functions):
             result_list, loss_value = process_function(features, layer)
-            features = result_list[0]  # 使用第一個輸出作為下一層的輸入
+            features = result_list[0]
         return result_list, loss_value
