@@ -3,6 +3,8 @@ import torch.nn as nn
 import copy
 
 class ProjectorLayer(nn.Module):
+    """Projection wrapper that selects one projector head by type."""
+
     def __init__(self, projector_type, custom_projector):
         super().__init__()
 
@@ -12,6 +14,18 @@ class ProjectorLayer(nn.Module):
         )
             
     def _get_projector_head(self, projector_type, custom_projector):
+        """Resolve projector implementation from configuration.
+
+        Args:
+            projector_type: Projector mode string.
+            custom_projector: Optional custom projector module.
+
+        Returns:
+            nn.Module: Selected projector head module.
+
+        Raises:
+            ValueError: If custom projector is missing/invalid or type unknown.
+        """
         if projector_type == "i":
             return IdentityProjector()
         elif projector_type == "mlp":
@@ -30,6 +44,14 @@ class ProjectorLayer(nn.Module):
             raise ValueError(f"Unknown projector type: {projector_type}")
             
     def forward(self, x):
+        """Flatten and project block features.
+
+        Args:
+            x: Input feature tensor.
+
+        Returns:
+            torch.Tensor: Projected features.
+        """
         return self.projector(x)
 
 class LinearProjector(nn.Module):
@@ -38,6 +60,14 @@ class LinearProjector(nn.Module):
         self.layer = nn.LazyLinear(1024)
 
     def forward(self, x):
+        """Apply a single lazy linear projection.
+
+        Args:
+            x: Input features.
+
+        Returns:
+            torch.Tensor: Projected features.
+        """
         return self.layer(x).to(x.device)
 
 class IdentityProjector(nn.Module):
@@ -46,6 +76,14 @@ class IdentityProjector(nn.Module):
         self.layer = nn.Identity()
 
     def forward(self, x):
+        """Keep feature dimensions unchanged.
+
+        Args:
+            x: Input features.
+
+        Returns:
+            torch.Tensor: Original features.
+        """
         return self.layer(x).to(x.device)
 
 class MLPProjector(nn.Module):
@@ -58,6 +96,14 @@ class MLPProjector(nn.Module):
         )
         
     def forward(self, x):      
+        """Apply two-layer MLP projection head.
+
+        Args:
+            x: Input features.
+
+        Returns:
+            torch.Tensor: Projected features.
+        """
         return self.layer(x).to(x.device)
 
 class DeInfoProjector(nn.Module):
@@ -74,5 +120,13 @@ class DeInfoProjector(nn.Module):
         )
 
     def forward(self, x):      
+        """Apply deeper projector used by DeInfo objective.
+
+        Args:
+            x: Input features.
+
+        Returns:
+            torch.Tensor: Projected features.
+        """
         return self.layer(x).to(x.device)
         

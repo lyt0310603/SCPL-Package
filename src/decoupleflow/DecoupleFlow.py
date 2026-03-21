@@ -6,6 +6,8 @@ from .utils import Optimizer, LR_Scheduler, CPUThread
 
 
 class DecoupleFlow(nn.Module):
+    """Split model layers across devices and train each block locally."""
+
     def __init__(self, custom_model, device_map, loss_fn="CL", num_classes=None,
                  projector_type="i", custom_projector=None,
                  transform_funcs=None, 
@@ -35,6 +37,20 @@ class DecoupleFlow(nn.Module):
             
     
     def _get_layer_config(self, custom_model, transform_funcs, loss_fn, projector_type, custom_projector, num_classes, classifier):
+        """Build per-block configuration for model partitioning.
+
+        Args:
+            custom_model: User model composed of child layers.
+            transform_funcs: Optional transform function per block.
+            loss_fn: Loss setting or callable.
+            projector_type: Projector mode string.
+            custom_projector: Optional custom projector module.
+            num_classes: Number of classes for class-dependent losses.
+            classifier: Optional auxiliary classifier for adaptive mode.
+
+        Returns:
+            Tuple[dict, list]: Block configuration dict and block device list.
+        """
         layer_config = {}
         balance_idx = 0
         layer_idx = 0
@@ -64,6 +80,19 @@ class DecoupleFlow(nn.Module):
         return layer_config, device
 
     def _generate_device_distribution(self, device_map):
+        """Normalize user device_map into unified list format.
+
+        Args:
+            device_map: Either `dict[device, layers]` or list of
+                `{"device": ..., "layers": ...}` mappings.
+
+        Returns:
+            Optional[list]: Normalized device distribution list.
+
+        Raises:
+            TypeError: If `device_map` has unsupported structure.
+            KeyError: If required keys are missing in list-style items.
+        """
         if device_map is None:
             return None
 
@@ -103,6 +132,19 @@ class DecoupleFlow(nn.Module):
         self.model = torch.nn.Sequential(*self.model)
 
     def _model_check(self, custom_model, transform_funcs, loss_fn, num_classes, is_adaptive, classifier):
+        """Validate model partition settings before building blocks.
+
+        Args:
+            custom_model: User model to split.
+            transform_funcs: Optional transform function list.
+            loss_fn: Loss setting.
+            num_classes: Number of classes.
+            is_adaptive: Whether adaptive mode is enabled.
+            classifier: Optional adaptive classifier.
+
+        Raises:
+            ValueError: If layer counts, devices, or loss args are invalid.
+        """
         device_distribution = self.device_distribution
         if device_distribution is None:
             raise ValueError('device_map cannot be None')
@@ -133,6 +175,17 @@ class DecoupleFlow(nn.Module):
                     print(name, param.data)
 
     def train_step(self, X, Y, mask=None):
+        """Run one decoupled training step across all blocks.
+
+        Args:
+            X: Input batch.
+            Y: Label batch.
+            mask: Optional mask forwarded to each block.
+
+        Returns:
+            Tuple[torch.Tensor, float, torch.Tensor]: Final block feature/logits,
+            aggregated loss value, and labels on final device.
+        """
         features_list = []
         labels_list = []
         masks_list = []
@@ -186,6 +239,17 @@ class DecoupleFlow(nn.Module):
         return layer_features[-1], total_loss, labels_list[-1]
 
     def test_step(self, X, Y, mask=None):
+        """Run standard inference through all blocks.
+
+        Args:
+            X: Input batch.
+            Y: Label batch.
+            mask: Optional mask forwarded to each block.
+
+        Returns:
+            Tuple[torch.Tensor, torch.Tensor]: Final output tensor and labels on
+            last block device.
+        """
         features_list = []
         masks_list = []
         
@@ -210,6 +274,17 @@ class DecoupleFlow(nn.Module):
         return output[0], y
 
     def adaptive_test_step(self, X, Y, mask=None):
+        """Run adaptive inference with early-exit check.
+
+        Args:
+            X: Input batch.
+            Y: Label batch.
+            mask: Optional mask forwarded to each block.
+
+        Returns:
+            Tuple[torch.Tensor, int, torch.Tensor]: Classifier output at stop
+            layer, stop-layer index, and labels on that layer device.
+        """
         self.patiencecount = 0
         classifier_output_pre = None
         classifier_outputs = []
@@ -244,6 +319,16 @@ class DecoupleFlow(nn.Module):
         return classifier_output, i, y
                 
     def AdaptiveCondition(self, prelayer, nowlayer):
+        """Evaluate whether adjacent classifier outputs are stable.
+
+        Args:
+            prelayer: Previous layer classifier logits.
+            nowlayer: Current layer classifier logits.
+
+        Returns:
+            int: `1` if prediction class and cosine similarity pass threshold,
+            otherwise `0`.
+        """
         prelayer_maxarg = torch.argmax(prelayer, dim=1)
         nowlayer = nowlayer.to(prelayer.device)
         nowlayer_maxarg = torch.argmax(nowlayer, dim=1)
@@ -255,6 +340,12 @@ class DecoupleFlow(nn.Module):
         return 0
     
     def _init_optimizers(self, optimizer_fn, optimizer_param):
+        """Create optimizer wrappers for each block.
+
+        Args:
+            optimizer_fn: Optimizer class or special string selector.
+            optimizer_param: Optimizer keyword arguments.
+        """
         self.optimizers = list()
         for i in range(len(self.model_config)):
             self.optimizers.append(Optimizer(
@@ -264,6 +355,15 @@ class DecoupleFlow(nn.Module):
             ))
             
     def _init_schedulers(self, scheduler_fn, scheduler_param):
+        """Create schedulers for each block optimizer.
+
+        Args:
+            scheduler_fn: Scheduler constructor.
+            scheduler_param: Scheduler keyword arguments.
+
+        Raises:
+            ValueError: If scheduler is provided without parameters.
+        """
         if scheduler_fn != None:
             
             if not scheduler_param:
@@ -278,6 +378,17 @@ class DecoupleFlow(nn.Module):
                 ))
 
     def _loss_backward_update(self, layer, optimizer, hidden_state, true_y):
+        """Compute local loss, backpropagate, and update one block.
+
+        Args:
+            layer: Target block.
+            optimizer: Optimizer for this block.
+            hidden_state: Feature used for local loss.
+            true_y: Ground-truth labels.
+
+        Returns:
+            torch.Tensor: Local loss tensor.
+        """
         loss, hidden_state = layer.loss_cal(hidden_state, true_y)
         loss.backward()
         optimizer.step()
@@ -300,6 +411,16 @@ class DecoupleFlow(nn.Module):
             self.device_list[i]= device
 
     def forward(self, X, Y, mask=None):
+        """Dispatch to train or validation step based on module mode.
+
+        Args:
+            X: Input batch.
+            Y: Label batch.
+            mask: Optional mask batch.
+
+        Returns:
+            tuple: Output tuple from selected step function.
+        """
         if self.training:
             return self.training_step(X, Y, mask)
         else:

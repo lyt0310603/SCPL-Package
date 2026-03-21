@@ -4,12 +4,20 @@ import random
 from nltk.corpus import wordnet
 
 class _AugmentedDataset(Dataset):
+    """Dataset wrapper that materializes two augmented samples per item."""
+
     def __init__(self, original_dataset, data_type, **kwargs):
         self.original_dataset = original_dataset
         self.augmented_dataset = []
         self._make_augmentation(data_type, kwargs)
         
     def _make_augmentation(self, data_type, kwargs): 
+        """Create and store augmented samples.
+
+        Args:
+            data_type: Augmentation data type selector.
+            kwargs: Parameters for augmentation transform construction.
+        """
         transform_function = _vision_transform(**kwargs)            
         for data, label in self.original_dataset:
             augmented_data_1, augmented_data_2 = transform_function.apply(data)
@@ -24,6 +32,8 @@ class _AugmentedDataset(Dataset):
         return data, label
 
 class _vision_transform:
+    """Strong/weak image augmentation pair used in contrastive pipelines."""
+
     def __init__(self, **kwargs):
         self.image_size = kwargs["image_size"]
         self.mean = kwargs["mean"]
@@ -49,11 +59,30 @@ class _vision_transform:
         ])
         
     def apply(self, image):
+        """Create paired image augmentations.
+
+        Args:
+            image: Input PIL image or image-like object.
+
+        Returns:
+            Tuple[torch.Tensor, torch.Tensor]: Strong and weak augmented images.
+        """
         strong_image = self.strong_transform(image)
         weak_image = self.weak_transform(image)
         return strong_image, weak_image
 
 def _nlp_transform(original_sentences, original_labels, synonyms, probability):
+        """Apply random text augmentations per sentence.
+
+        Args:
+            original_sentences: Input sentence list.
+            original_labels: Label list aligned with sentences.
+            synonyms: Word-to-synonyms dictionary.
+            probability: Augmentation strength factor.
+
+        Returns:
+            Tuple[list, list]: Augmented sentences and corresponding labels.
+        """
         AUGMENTATION_METHODS = {
             'synonym_replacement': {'fn': _synonym_replacement, 'params': {'probability': probability, 'synonyms': synonyms}},
             'random_insertion': {'fn': _random_insertion, 'params': {'probability': probability, 'synonyms': synonyms}},
@@ -76,6 +105,14 @@ def _nlp_transform(original_sentences, original_labels, synonyms, probability):
         return augmented_sentences, augmented_labels
         
 def _extract_unique_words(dataset):
+    """Collect unique tokens from sentence list.
+
+    Args:
+        dataset: Iterable sentence collection.
+
+    Returns:
+        set: Unique token set.
+    """
     unique_words = set()
     for sentence in dataset:
         words = sentence.split()
@@ -83,6 +120,14 @@ def _extract_unique_words(dataset):
     return unique_words
     
 def _get_synonyms(dataset):
+    """Build token-to-synonyms mapping from WordNet.
+
+    Args:
+        dataset: Iterable sentence collection.
+
+    Returns:
+        dict: Mapping from token to synonym list.
+    """
     unique_words = _extract_unique_words(dataset)
     synonym_dict = {}
     for word in unique_words:
@@ -96,6 +141,16 @@ def _get_synonyms(dataset):
     return synonym_dict
 
 def _synonym_replacement(sentence, probability, synonyms):
+    """Randomly replace eligible words with synonyms.
+
+    Args:
+        sentence: Input sentence.
+        probability: Replacement ratio.
+        synonyms: Word-to-synonyms dictionary.
+
+    Returns:
+        str: Augmented sentence.
+    """
     words = sentence.split()
     num_words = max(1, int(probability * len(words)))
     eligible_words = [word for word in words if word in synonyms]
@@ -118,6 +173,16 @@ def _synonym_replacement(sentence, probability, synonyms):
     return ' '.join(new_words)
 
 def _random_insertion(sentence, probability, synonyms):
+    """Insert random synonyms at random positions.
+
+    Args:
+        sentence: Input sentence.
+        probability: Insertion ratio.
+        synonyms: Word-to-synonyms dictionary.
+
+    Returns:
+        str: Augmented sentence.
+    """
     words = sentence.split()
     num_words = max(1, int(probability * len(words)))
     eligible_words = [word for word in words if word in synonyms]
@@ -135,6 +200,15 @@ def _random_insertion(sentence, probability, synonyms):
     return ' '.join(words)
 
 def _random_swap(sentence, probability):
+    """Randomly swap word positions multiple times.
+
+    Args:
+        sentence: Input sentence.
+        probability: Swap ratio.
+
+    Returns:
+        str: Augmented sentence.
+    """
     words = sentence.split()
     num_words = max(1, int(probability * len(words)))
     for _ in range(num_words):
@@ -144,6 +218,15 @@ def _random_swap(sentence, probability):
     return ' '.join(words)
 
 def _random_deletion(sentence, probability):
+    """Drop words with given probability while keeping at least one token.
+
+    Args:
+        sentence: Input sentence.
+        probability: Deletion probability per token.
+
+    Returns:
+        str: Augmented sentence.
+    """
     words = sentence.split()
     if len(words) == 1:
         return sentence
@@ -159,11 +242,32 @@ def _random_deletion(sentence, probability):
         
             
 def Vision_augment(data_loader, image_size=32, mean=(0.5, 0.5, 0.5), std=(0.5, 0.5, 0.5)):
+    """Create vision-augmented dataloader.
+
+    Args:
+        data_loader: Source dataloader.
+        image_size: Resize/crop image size.
+        mean: Normalize mean.
+        std: Normalize std.
+
+    Returns:
+        DataLoader: Dataloader over augmented dataset.
+    """
     augmented_dataset = _AugmentedDataset(data_loader.dataset, "Vision", image_size=image_size, mean=mean, std=std)
     augmented_data_loader = DataLoader(augmented_dataset, batch_size=2*data_loader.batch_size, shuffle=True)
     return augmented_data_loader
 
 def NLP_augment(original_sentences, original_labels, probability=0.1):
+    """Create NLP-augmented sentences and labels.
+
+    Args:
+        original_sentences: Input sentence list.
+        original_labels: Label list aligned with sentences.
+        probability: Augmentation strength factor.
+
+    Returns:
+        Tuple[list, list]: Augmented sentences and labels.
+    """
     synonyms = _get_synonyms(original_sentences)
     augmented_sentences, augmented_labels = _nlp_transform(original_sentences, original_labels, synonyms, probability)
     return augmented_sentences, augmented_labels

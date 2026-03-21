@@ -4,6 +4,8 @@ import torch.nn.functional as F
 
 
 class LossLayer:
+    """Resolve and compute local block loss functions."""
+
     def __init__(self, device, loss_function, num_classes, projector_layer):
         self.device = device
         self.num_classes = num_classes
@@ -26,6 +28,16 @@ class LossLayer:
             self.loss = self.normal_loss
 
     def ContrastiveLoss(self, features, labels):   
+        """Compute supervised contrastive loss.
+
+        Args:
+            features: Block feature tensor.
+            labels: Class labels.
+
+        Returns:
+            Tuple[torch.Tensor, torch.Tensor]: Loss scalar and projected
+            features.
+        """
         features = self.projector_layer(features)
         projected_output = features
         
@@ -49,6 +61,16 @@ class LossLayer:
         return loss, projected_output
 
     def DeInfoLoss(self, features, labels):
+        """Compute DeInfo loss with variance/invariance/covariance terms.
+
+        Args:
+            features: Block feature tensor.
+            labels: Class labels.
+
+        Returns:
+            Tuple[torch.Tensor, torch.Tensor]: Loss scalar and projected
+            features.
+        """
         features = self.projector_layer(features)
         projected_output = features
         num_features = features.cpu().shape[1]
@@ -72,24 +94,69 @@ class LossLayer:
         return loss, projected_output
 
     def normal_loss(self, features, labels):
+        """Compute user-provided loss directly.
+
+        Args:
+            features: Model features.
+            labels: Ground-truth labels.
+
+        Returns:
+            Tuple[torch.Tensor, None]: Loss output and `None` projector output.
+        """
         return self.loss_function(features, labels), None
     
     def get_loss(self, features, true_labels):
+        """Dispatch to configured loss implementation.
+
+        Args:
+            features: Model features.
+            true_labels: Ground-truth labels.
+
+        Returns:
+            Tuple[torch.Tensor, Optional[torch.Tensor]]: Loss and optional
+            projected output.
+        """
         return self.loss(features, true_labels)
 
 
 def off_diagonal(x):
+    """Return flattened off-diagonal entries of square matrix.
+
+    Args:
+        x: Square matrix tensor.
+
+    Returns:
+        torch.Tensor: Flattened off-diagonal values.
+    """
     n, m = x.shape
     assert n == m
     return x.flatten()[:-1].view(n - 1, n + 1)[:, 1:].flatten()
 
 def similarity_matrix(x , no_similarity_std = False):
+    """Compute pairwise cosine similarity matrix.
+
+    Args:
+        x: Input feature tensor with shape `[N, D]`.
+        no_similarity_std: Unused compatibility argument.
+
+    Returns:
+        torch.Tensor: Similarity matrix with shape `[N, N]`.
+    """
     xc = x - x.mean(dim=1).unsqueeze(1)
     xn = xc / (1e-8 + torch.sqrt(torch.sum(xc**2, dim=1))).unsqueeze(1)
     R = xn.matmul(xn.transpose(1, 0)).clamp(-1, 1)
     return R
 
 def to_one_hot(y, n_dims=None):
+    """Convert integer labels to one-hot vectors.
+
+    Args:
+        y: Integer label tensor.
+        n_dims: Number of classes. If `None`, inferred from `y`.
+
+    Returns:
+        torch.Tensor: One-hot encoded labels.
+    """
     y_tensor = y.type(torch.LongTensor).view(-1, 1)
     n_dims = n_dims if n_dims is not None else int(torch.max(y_tensor)) + 1
     y_one_hot = torch.zeros(y_tensor.size()[0], n_dims).scatter_(1, y_tensor, 1)

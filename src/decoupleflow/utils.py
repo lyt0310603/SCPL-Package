@@ -5,6 +5,8 @@ import threading
 
 
 class Optimizer:
+    """Thin optimizer wrapper supporting built-in or custom optimizer configs."""
+
     def __init__(self, model_parameters, optimizer_function, optimizer_parameters):
         if isinstance(optimizer_function, str):
             if optimizer_parameters:
@@ -18,21 +20,36 @@ class Optimizer:
                 self.optimizer = optimizer_function(model_parameters, lr=1e-3)
     
     def zero_grad(self):
+        """Clear gradients of wrapped optimizer."""
         self.optimizer.zero_grad()
         
     def get_learning_rate(self):
+        """Return current learning rate.
+
+        Returns:
+            float: Learning rate of the first parameter group.
+        """
         return self.optimizer.param_groups[0]['lr']
 
 
 class LR_Scheduler:
+    """Small wrapper to unify scheduler construction and stepping."""
+
     def __init__(self, opt, scheduler_fn, scheduler_param):
         self.scheduler = scheduler_fn(opt, **scheduler_param)
         
     def step(self, *arg):
+        """Advance wrapped scheduler.
+
+        Args:
+            *arg: Optional scheduler step arguments.
+        """
         self.scheduler.step(*arg)
 
 
 class LARS(optim.Optimizer):
+    """Layer-wise Adaptive Rate Scaling optimizer."""
+
     def __init__(
         self,
         params,
@@ -55,6 +72,11 @@ class LARS(optim.Optimizer):
 
     @torch.no_grad()
     def step(self):
+        """Perform one optimization step using LARS adaptation.
+
+        Returns:
+            None
+        """
         for g in self.param_groups:
             for p in g["params"]:
                 dp = p.grad
@@ -90,10 +112,20 @@ class LARS(optim.Optimizer):
                 
     @staticmethod
     def exclude_bias_and_norm(parameter):
+        """Check whether a parameter is bias/norm style.
+
+        Args:
+            parameter: Model parameter tensor.
+
+        Returns:
+            bool: `True` when tensor is 1D.
+        """
         return parameter.ndim == 1
 
 
 class CPUThread(threading.Thread):
+    """Thread wrapper that stores function result for later retrieval."""
+
     def __init__(self, target=None, args=(), **kwargs):
         super(CPUThread, self).__init__()
         self._target = target
@@ -101,6 +133,7 @@ class CPUThread(threading.Thread):
         self._kwargs = kwargs
 
     def run(self):
+        """Execute target function and store result safely."""
         if self._target == None:
             return
         try:
@@ -109,6 +142,14 @@ class CPUThread(threading.Thread):
             self.__result__ = None
     
     def get_result(self):
+        """Wait for thread completion and fetch result.
+
+        Returns:
+            Any: Stored function result.
+
+        Raises:
+            ValueError: If thread execution failed or returned no result.
+        """
         self.join()
         if self.__result__ is None:
             raise ValueError(f"Here are some error in loss backward, please check your model structure")
