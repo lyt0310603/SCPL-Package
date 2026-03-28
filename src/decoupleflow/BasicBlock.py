@@ -74,18 +74,6 @@ class BasicBlock(nn.Module):
         encoder_loss, _ = self.loss_layer.get_loss(x, true_y)
         return encoder_loss, x
         
-    def loss_cal(self, x, true_y):     
-        """Alias for `loss` to keep training-loop compatibility.
-
-        Args:
-            x: Block feature used for loss.
-            true_y: Ground-truth labels.
-
-        Returns:
-            Tuple[torch.Tensor, torch.Tensor]: Same result as `loss`.
-        """
-        return self.loss(x, true_y)
-    
 class AdaptiveBasicBlock(BasicBlock):
     """BasicBlock variant with an auxiliary classifier for adaptive inference."""
 

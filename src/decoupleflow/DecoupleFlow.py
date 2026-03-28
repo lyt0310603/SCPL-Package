@@ -389,7 +389,7 @@ class DecoupleFlow(nn.Module):
         Returns:
             torch.Tensor: Local loss tensor.
         """
-        loss, hidden_state = layer.loss_cal(hidden_state, true_y)
+        loss, hidden_state = layer.loss(hidden_state, true_y)
         loss.backward()
         optimizer.step()
         return loss
