@@ -49,12 +49,12 @@ def test_non_last_blocks_have_projector_and_local_loss_with_independent_optimize
         assert hasattr(block, "loss_layer"), f"Block {idx} 缺少 loss_layer。"
 
         if idx < num_blocks - 1:
-            assert block.loss_layer.loss_function == "CL", (
-                f"Block {idx} 應為局部 CL 損失。"
+            assert block.loss_layer.loss_function == ("CL" or "DeInfo"), (
+                f"Block {idx} 應為局部 CL 或 DeInfo 損失。"
             )
         else:
-            assert isinstance(block.loss_layer.loss_function, nn.CrossEntropyLoss), (
-                "最後一個 Block 應為 CrossEntropyLoss。"
+            assert block.loss_layer.loss_function == "CE", (
+                "最後一個 Block 應為字串 CE。"
             )
 
     # Verify one optimizer per block and no shared parameters between optimizers.

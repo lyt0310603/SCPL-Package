@@ -60,7 +60,7 @@ def _run_and_get_weights(
     model: DecoupleFlow, x: torch.Tensor, y: torch.Tensor, perturb_blocks: Iterable[int]
 ) -> List[List[torch.Tensor]]:
     for idx in perturb_blocks:
-        model.model[idx].loss_cal = _make_perturbed_loss()
+        model.model[idx].loss = _make_perturbed_loss()
 
     model.train()
     _ = model(x, y)
