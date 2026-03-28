@@ -22,10 +22,10 @@ class LossLayer:
                 self.loss = self.ContrastiveLoss
             elif loss_function == "DeInfo":
                 self.loss = self.DeInfoLoss
+            elif loss_function == "CE":
+                self.loss = self.CELoss
             else:
                 raise ValueError(f"Unknown loss function: {loss_function}")
-        else:
-            self.loss = self.normal_loss
 
     def ContrastiveLoss(self, features, labels):   
         """Compute supervised contrastive loss.
@@ -93,8 +93,8 @@ class LossLayer:
         loss = ( var_loss * 1.0 + invar_loss * 1.0 + cov_loss * 1.0)
         return loss, projected_output
 
-    def normal_loss(self, features, labels):
-        """Compute user-provided loss directly.
+    def CELoss(self, features, labels):
+        """Compute cross-entropy loss.
 
         Args:
             features: Model features.
@@ -103,20 +103,20 @@ class LossLayer:
         Returns:
             Tuple[torch.Tensor, None]: Loss output and `None` projector output.
         """
-        return self.loss_function(features, labels), None
+        return F.cross_entropy(features, labels), None
     
-    def get_loss(self, features, true_labels):
+    def get_loss(self, features, labels):
         """Dispatch to configured loss implementation.
 
         Args:
             features: Model features.
-            true_labels: Ground-truth labels.
+            labels: Ground-truth labels.
 
         Returns:
             Tuple[torch.Tensor, Optional[torch.Tensor]]: Loss and optional
             projected output.
         """
-        return self.loss(features, true_labels)
+        return self.loss(features, labels)
 
 
 def off_diagonal(x):

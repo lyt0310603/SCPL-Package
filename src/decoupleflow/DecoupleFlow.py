@@ -67,7 +67,7 @@ class DecoupleFlow(nn.Module):
                                            "transform_func": transform_funcs[layer_idx] if transform_funcs != None else None,
                                            "projector_type": projector_type,
                                            "custom_projector": custom_projector,
-                                           "loss_fn":loss_fn if (layer_idx < len(device_distribution)-1 or self.is_adaptive) else nn.CrossEntropyLoss(),
+                                           "loss_fn":loss_fn if (layer_idx < len(device_distribution)-1 or self.is_adaptive) else 'CE',
                                            "num_classes": num_classes}
                 if self.is_adaptive:
                     layer_config[layer_idx]["classifier"] = classifier
