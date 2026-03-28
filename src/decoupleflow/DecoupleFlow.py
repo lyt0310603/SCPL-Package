@@ -45,7 +45,7 @@ class DecoupleFlow(nn.Module):
         self.validation_step = self.test_step
         if self.is_adaptive:
             self.validation_step = self.adaptive_test_step
-            self.patiencecount = patiencethreshold
+            self.pthreshold = patiencethreshold
             self.costhreshold = cosinesimthreshold
             self.cos = nn.CosineSimilarity(dim=1, eps=1e-6)
             
@@ -400,8 +400,7 @@ class DecoupleFlow(nn.Module):
             Tuple[torch.Tensor, int, torch.Tensor]: Classifier output at stop
             layer, stop-layer index, and labels on that layer device.
         """
-        self.patiencecount = 0
-        classifier_output_pre = None
+        pcount = 0
         classifier_outputs = []
         features_list = []
         masks_list = []
@@ -426,8 +425,8 @@ class DecoupleFlow(nn.Module):
             classifier_outputs.append(classifier_output)
         
             if i != 0:                
-                self.patiencecount += self.AdaptiveCondition(classifier_outputs[i-1], classifier_outputs[i])
-                if self.patiencecount >= self.costhreshold:
+                pcount += self.AdaptiveCondition(classifier_outputs[i-1], classifier_outputs[i])
+                if pcount >= self.pthreshold:
                     break
             
         y = Y.to(self.device_list[i], non_blocking=True)
@@ -450,7 +449,7 @@ class DecoupleFlow(nn.Module):
         cossimi = torch.mean(self.cos(prelayer, nowlayer))
         condition_maxarg = torch.all(prelayer_maxarg == nowlayer_maxarg)
         
-        if condition_maxarg and cossimi > self.cosinesimthreshold:
+        if condition_maxarg and cossimi > self.costhreshold:
             return  1
         return 0
     
