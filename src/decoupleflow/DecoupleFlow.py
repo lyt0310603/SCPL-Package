@@ -19,8 +19,22 @@ class DecoupleFlow(nn.Module):
         self.multi_t = multi_t
         self.is_adaptive = is_adaptive
         self.device_distribution = self._generate_device_distribution(device_map)
-        
-        self._model_check(custom_model, transform_funcs, loss_fn, num_classes, is_adaptive, classifier)
+        self._validate_config(
+            custom_model=custom_model,
+            transform_funcs=transform_funcs,
+            loss_fn=loss_fn,
+            num_classes=num_classes,
+            projector_type=projector_type,
+            custom_projector=custom_projector,
+            multi_t=multi_t,
+            is_adaptive=is_adaptive,
+            patiencethreshold=patiencethreshold,
+            cosinesimthreshold=cosinesimthreshold,
+            optimizer_param=optimizer_param,
+            scheduler_fn=scheduler_fn,
+            scheduler_param=scheduler_param,
+            classifier=classifier,
+        )
         self.model_config, self.device_list = self._get_layer_config(custom_model, transform_funcs, 
                                                                       loss_fn, projector_type, custom_projector, num_classes, classifier)
         self._build_model()
@@ -167,6 +181,107 @@ class DecoupleFlow(nn.Module):
 
         if loss_fn == "DeInfo" and num_classes == None:
             raise ValueError('DeInfo Loss need pass class nums')
+    
+    def _validate_config(
+        self,
+        custom_model,
+        transform_funcs,
+        loss_fn,
+        num_classes,
+        projector_type,
+        custom_projector,
+        multi_t,
+        is_adaptive,
+        patiencethreshold,
+        cosinesimthreshold,
+        optimizer_param,
+        scheduler_fn,
+        scheduler_param,
+        classifier,
+    ):
+        """Run full initialization validation in a single entry point."""
+        self._type_check(
+            loss_fn=loss_fn,
+            transform_funcs=transform_funcs,
+            num_classes=num_classes,
+            projector_type=projector_type,
+            custom_projector=custom_projector,
+            multi_t=multi_t,
+            is_adaptive=is_adaptive,
+            patiencethreshold=patiencethreshold,
+            cosinesimthreshold=cosinesimthreshold,
+            optimizer_param=optimizer_param,
+            scheduler_fn=scheduler_fn,
+            scheduler_param=scheduler_param,
+        )
+        self._model_check(
+            custom_model=custom_model,
+            transform_funcs=transform_funcs,
+            loss_fn=loss_fn,
+            num_classes=num_classes,
+            is_adaptive=is_adaptive,
+            classifier=classifier,
+        )
+    
+    def _type_check(
+        self,
+        loss_fn,
+        transform_funcs,
+        num_classes,
+        projector_type,
+        custom_projector,
+        multi_t,
+        is_adaptive,
+        patiencethreshold,
+        cosinesimthreshold,
+        optimizer_param,
+        scheduler_fn,
+        scheduler_param,
+    ):
+        """Validate runtime parameter types for safer initialization.
+
+        Raises:
+            TypeError: If argument types do not match expected interfaces.
+        """
+        if not isinstance(loss_fn, str):
+            raise TypeError("loss_fn must be a string: 'CL' | 'DeInfo' | 'CE'")
+        if loss_fn not in {"CL", "DeInfo", "CE"}:
+            raise TypeError("loss_fn must be one of: 'CL', 'DeInfo', 'CE'")
+
+        if transform_funcs is not None:
+            if not isinstance(transform_funcs, list):
+                raise TypeError("transform_funcs must be a list of callables or None")
+            for idx, fn in enumerate(transform_funcs):
+                if fn is not None and not callable(fn):
+                    raise TypeError(f"transform_funcs[{idx}] must be callable or None")
+
+        if num_classes is not None and not isinstance(num_classes, int):
+            raise TypeError("num_classes must be int or None")
+        if isinstance(num_classes, int) and num_classes <= 0:
+            raise TypeError("num_classes must be > 0")
+
+        if not isinstance(projector_type, str):
+            raise TypeError("projector_type must be a string")
+        if projector_type == "c" and custom_projector is not None and not isinstance(custom_projector, nn.Module):
+            raise TypeError("custom_projector must be torch.nn.Module when projector_type is 'c'")
+
+        if not isinstance(multi_t, bool):
+            raise TypeError("multi_t must be bool")
+        if not isinstance(is_adaptive, bool):
+            raise TypeError("is_adaptive must be bool")
+
+        if not isinstance(patiencethreshold, int):
+            raise TypeError("patiencethreshold must be int")
+        if patiencethreshold < 1:
+            raise TypeError("patiencethreshold must be >= 1")
+
+        if not isinstance(cosinesimthreshold, (int, float)):
+            raise TypeError("cosinesimthreshold must be int or float")
+
+        if not isinstance(optimizer_param, dict):
+            raise TypeError("optimizer_param must be dict")
+        if scheduler_fn is not None and not isinstance(scheduler_param, dict):
+            raise TypeError("scheduler_param must be dict when scheduler_fn is provided")
 
     def print(self):
         for layer in self.model:
